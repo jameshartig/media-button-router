@@ -1,0 +1,60 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.jameshartig.android.media_router"
+    android:versionCode="1"
+    android:versionName="1.0">
+
+    <uses-sdk android:minSdkVersion="9" android:targetSdkVersion="19" />
+    <uses-permission android:name="android.permission.GET_TASKS"/>
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
+
+
+    <application android:icon="@drawable/icon" android:label="@string/app_name">
+        <activity android:name=".MediaButtonConfigure" android:launchMode="singleTop"
+                  android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity android:name=".ReceiverSelector"
+                 android:launchMode="singleInstance" android:excludeFromRecents="true"
+                 android:theme="@style/Theme.Translucent.NoTitleBar"
+                 >
+            <intent-filter>
+                <action android:name="com.jameshartig.android.VIEW_MEDIA_LIST" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+                <activity android:name=".ReceiverSelectorLocked"
+                 android:launchMode="singleInstance" android:excludeFromRecents="true"
+                 android:theme="@style/Theme.Wallpaper.NoTitleBar"
+                 >
+            <intent-filter>
+                <action android:name="com.jameshartig.android.VIEW_MEDIA_LIST" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+		<receiver android:name=".receivers.MediaButtonReceiver">
+			<!--  This priority is higher than is supposed to be used for user apps, 
+			but we need to beat out other receivers since we're trying to manage it all ourselves. 
+			Besides, WinAmp uses this priority (that's why we can't beat it)-->
+			<intent-filter android:priority="2147483647">
+				<action android:name="android.intent.action.MEDIA_BUTTON"/>
+			</intent-filter>
+		</receiver>
+		
+		<receiver android:name=".receivers.MediaButtonRouterBootReceiver">
+			<!--  This priority is higher than is supposed to be used for user apps, 
+			but we need to beat out other receivers since we're trying to manage it all ourselves. 
+			Besides, WinAmp uses this priority (that's why we can't beat it)-->
+			<intent-filter>
+				<action android:name="android.intent.action.BOOT_COMPLETED"/>
+			</intent-filter>
+		</receiver>
+
+		<service android:name=".MediaButtonMonitorService">
+		</service>
+    </application>
+</manifest>

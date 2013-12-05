@@ -1,0 +1,4 @@
+build/test
+build/production/com/
+build/production/*unaligned.apk
+gen/

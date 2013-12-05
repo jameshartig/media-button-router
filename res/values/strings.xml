@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Media Button Router</string>
+    <string name="cancel_button">Cancel</string>
+    <string name="disable_button">Disable</string>
+    <string name="pref_enable_title">Enable</string>
+    <string name="pref_enable_summary">Check to have media button router handle media presses and forward to music apps</string>
+    <string name="play">Play</string>
+    <string name="pausePlay">Play/Pause</string>
+    <string name="next">Next</string>
+    <string name="prev">Previous</string>
+    <string name="stop">Stop</string>
+    <string name="dialog_header">Media Button Router</string>
+    <string name="dialog_header_with_action">Media Button Router: %1$s</string>
+    <string name="menu_preferences">Preferences</string>
+    <string name="pref_timeout_summary">How fast or slow the selector disappears after no user interaction.</string>
+    <string name="pref_timeout_title">Timeout Speed</string>
+    <string name="eula_title">EULA</string>
+	<string name="visible_apps_header">Apps To Show In The Selector</string>
+    <string name="misc_header">Miscellaneous</string>
+    <string name="show_license_title">License</string>
+    <string name="about">About</string>
+    <string name="about_key">Created by James Hartig, Harleen Sahni, &amp; Peter Haight</string>
+</resources>
