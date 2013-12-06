@@ -34,4 +34,5 @@ public class Constants {
     public static final String TIMEOUT_KEY = "timeout";
     public static final String HIDDEN_APPS_KEY = "hidden_apps";
     public static final String LAST_MEDIA_BUTTON_RECEIVER = "last_media_button_receiver";
+    public static final String IGNORE_NEW_RECEIVER = "ignoreNewReceiver";
 }

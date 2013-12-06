@@ -30,10 +30,9 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.ActivityInfo;
 import android.content.pm.ResolveInfo;
 import android.media.AudioManager;
-import android.os.PowerManager;
-import android.os.PowerManager.WakeLock;
 import android.preference.PreferenceManager;
 import android.util.Log;
 import android.view.KeyEvent;
@@ -85,56 +84,97 @@ public class MediaButtonReceiver extends BroadcastReceiver {
         // keeps being a problem, than we should always return immediately and
         // handle forwarding the intent in another thread
         if (Intent.ACTION_MEDIA_BUTTON.equals(intent.getAction())) {
-            /*Log.d(TAG, "Media Button Receiver: received media button intent: " + intent);*/
+            //Log.d(TAG, "Media Button Receiver: received media button intent: " + intent);
 
             KeyEvent keyEvent = (KeyEvent) intent.getExtras().get(Intent.EXTRA_KEY_EVENT);
             int keyCode = Utils.getAdjustedKeyCode(keyEvent);
+            //Log.d(TAG, "Media Button Receiver: handling media key event: " + keyEvent);
 
             // Don't want to capture volume buttons
             if (Utils.isMediaButton(keyCode)) {
-                /*Log.d(TAG, "Media Button Receiver: handling legitimate media key event: " + keyEvent);*/
-
+                AudioManager audioManager = ((AudioManager) context.getSystemService(Context.AUDIO_SERVICE));
+                boolean musicActive = audioManager.isMusicActive();
+                List<ResolveInfo> receivers = Utils.getMediaReceivers(context.getPackageManager(), true, context.getApplicationContext());
                 String last_media_button_receiver = preferences.getString(Constants.LAST_MEDIA_BUTTON_RECEIVER, null);
+                ComponentName lastReceiverComponentName = null;
+                boolean ignorePrompt = false;
+                boolean ignoreServices;
 
                 if (last_media_button_receiver != null) {
-                    ComponentName lastReceiverComponentName = ComponentName.unflattenFromString(last_media_button_receiver);
-                    if (forwardKeyCodeToRunningServiceActivityForComponentName(lastReceiverComponentName, activityManager, context, keyEvent, keyCode)) {
-                        return;
-                    }
-                }
-
-                AudioManager audioManager = ((AudioManager) context.getSystemService(Context.AUDIO_SERVICE));
-                List<ResolveInfo> receivers = Utils.getMediaReceivers(context.getPackageManager(), false, null);
-
-                if (audioManager.isMusicActive()) {
-
-                    if (last_media_button_receiver != null) {
-                        if (keyEvent.getAction() == KeyEvent.ACTION_UP) {
-                            Utils.forwardKeyCodeToComponent(context, ComponentName.unflattenFromString(last_media_button_receiver), false, keyCode, null);
-                        }
-                        if (isOrderedBroadcast()) {
-                            abortBroadcast();
-                        }
-                        return;
-                    }
-                    /*Log.d(TAG, "Media Button Receiver: may pass on event because music is already playing: " + keyEvent);*/
-
-                    if (receivers == null) {
-                        Log.d(TAG, "Media Button Receiver: receivers was null!");
-                        return;
-                    }
-                    for (ResolveInfo resolveInfo : receivers) {
-                        if (MediaButtonReceiver.class.getName().equals(resolveInfo.activityInfo.name)) {
-                            continue;
-                        }
-                        ComponentName componentName = new ComponentName(resolveInfo.activityInfo.packageName, resolveInfo.activityInfo.name);
-                        if (forwardKeyCodeToRunningServiceActivityForComponentName(componentName, activityManager, context, keyEvent, keyCode)) {
+                    if (last_media_button_receiver.equals(Constants.IGNORE_NEW_RECEIVER)) {
+                        ignorePrompt = true;
+                    } else {
+                        lastReceiverComponentName = ComponentName.unflattenFromString(last_media_button_receiver);
+                        if (musicActive) {
+                            if (keyEvent.getAction() == KeyEvent.ACTION_UP) {
+                                Utils.forwardKeyCodeToComponent(context, lastReceiverComponentName, false, keyCode, null);
+                            }
+                            if (isOrderedBroadcast()) {
+                                abortBroadcast();
+                            }
                             return;
                         }
                     }
-                    Log.d(TAG, "Media Button Receiver: No Receivers found playing music. Intent will use regular priorities.");
                 }
-                /*Log.d(TAG, "Media Button Receiver: No music is playing.");*/
+
+                List<RunningTaskInfo> runningTasks = activityManager.getRunningTasks(1);
+                List<RunningServiceInfo> runningServices = activityManager.getRunningServices(Integer.MAX_VALUE);
+                String lastReceiverPackageName = lastReceiverComponentName != null ? lastReceiverComponentName.getPackageName() : null;
+                ActivityInfo activityInfo;
+                for (ResolveInfo resolveInfo : receivers) {
+                    activityInfo = resolveInfo.activityInfo;
+                    if (activityInfo == null) {
+                        continue;
+                    }
+                    if (MediaButtonReceiver.class.getName().equals(activityInfo.name)) {
+                        continue;
+                    }
+                    ignoreServices = true;
+                    //if music is active we should look at services or
+                    //if we are looking at the app that was last open, we should look for services
+                    if (musicActive
+                        || (lastReceiverPackageName != null && activityInfo.packageName.equals(lastReceiverPackageName))) {
+                        ignoreServices = false;
+                    }
+                    for (RunningTaskInfo runningTask : runningTasks) {
+                        String packageName = runningTask.topActivity.getPackageName();
+                        if (packageName.equals(activityInfo.packageName)) {
+                            if (keyEvent.getAction() == KeyEvent.ACTION_UP) {
+                                Log.d(TAG, "Found task for " + packageName + "! sending key code");
+                                ComponentName componentName = new ComponentName(activityInfo.packageName, activityInfo.name);
+                                Utils.forwardKeyCodeToComponent(context, componentName, false, keyCode, null);
+                            }
+                            if (isOrderedBroadcast()) {
+                                abortBroadcast();
+                            }
+                            return;
+                        }
+                    }
+                    if (ignoreServices) {
+                        continue;
+                    }
+                    for (RunningServiceInfo runningService : runningServices) {
+                        if (!runningService.started || !runningService.foreground) {
+                            continue;
+                        }
+                        String packageName = runningService.service.getPackageName();
+                        if (packageName.equals(activityInfo.packageName)) {
+                            if (keyEvent.getAction() == KeyEvent.ACTION_UP) {
+                                Log.d(TAG, "Found service for " + packageName + "! sending key code");
+                                ComponentName componentName = new ComponentName(activityInfo.packageName, activityInfo.name);
+                                Utils.forwardKeyCodeToComponent(context, componentName, false, keyCode, null);
+                            }
+                            if (isOrderedBroadcast()) {
+                                abortBroadcast();
+                            }
+                            return;
+                        }
+                    }
+                }
+                if (musicActive) {
+                    //music was playing but we can't handle it
+                    return;
+                }
 
                 // No music playing
                 if (isOrderedBroadcast()) {
@@ -143,7 +183,7 @@ public class MediaButtonReceiver extends BroadcastReceiver {
 
                 if (keyEvent.getAction() == KeyEvent.ACTION_UP) {
 
-                    if (receivers == null) {
+                    if (receivers == null || ignorePrompt) {
                         return;
                     }
 
@@ -169,43 +209,6 @@ public class MediaButtonReceiver extends BroadcastReceiver {
         }
     }
 
-    private boolean forwardKeyCodeToRunningServiceActivityForComponentName(ComponentName componentName, ActivityManager activityManager, Context context, KeyEvent keyEvent, int keyCode) {
-        List<RunningTaskInfo> runningTasks = activityManager.getRunningTasks(1);
-        for (RunningTaskInfo runningTask : runningTasks) {
-            String packageName = runningTask.topActivity.getPackageName();
-            if (packageName.equals(componentName.getPackageName())) {
-                if (keyEvent.getAction() == KeyEvent.ACTION_UP) {
-                    Log.d(TAG, "Found task for " + packageName + "! sending key code");
-                    Utils.forwardKeyCodeToComponent(context, componentName, false, keyCode, null);
-                }
-                if (isOrderedBroadcast()) {
-                    abortBroadcast();
-                }
-                return true;
-            }
-        }
-
-        List<RunningServiceInfo> runningServices = activityManager.getRunningServices(Integer.MAX_VALUE);
-        // Find an open app that matches the last receiver
-        for (RunningServiceInfo runningService : runningServices) {
-            if (!runningService.started || !runningService.foreground) {
-                continue;
-            }
-            String packageName = runningService.service.getPackageName();
-            if (packageName.equals(componentName.getPackageName())) {
-                if (keyEvent.getAction() == KeyEvent.ACTION_UP) {
-                    Log.d(TAG, "Found service for " + packageName + "! sending key code");
-                    Utils.forwardKeyCodeToComponent(context, componentName, false, keyCode, null);
-                }
-                if (isOrderedBroadcast()) {
-                    abortBroadcast();
-                }
-                return true;
-            }
-        }
-        return false;
-    }
-
     /**
      * Shows the selector dialog that allows the user to decide which music
      * player should receiver the media button press intent.
@@ -226,23 +229,6 @@ public class MediaButtonReceiver extends BroadcastReceiver {
         showForwardView.putExtras(intent);
         showForwardView.setClassName(context,
                 locked ? ReceiverSelectorLocked.class.getName() : ReceiverSelector.class.getName());
-
-        /* COMMENTED OUT FOR MARKET RELEASE Log.i(TAG, "Media Button Receiver: starting selector activity for keyevent: " + keyEvent); */
-
-        if (locked) {
-
-            // XXX See if this actually makes a difference, might
-            // not be needed if we move more things to onCreate?
-            PowerManager powerManager = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
-            // acquire temp wake lock
-            WakeLock wakeLock = powerManager.newWakeLock(PowerManager.ACQUIRE_CAUSES_WAKEUP
-                    | PowerManager.SCREEN_DIM_WAKE_LOCK | PowerManager.ON_AFTER_RELEASE, TAG);
-            wakeLock.setReferenceCounted(false);
-
-            // Our app better display within 3 seconds or we have
-            // bigger issues.
-            wakeLock.acquire(3000);
-        }
         context.startActivity(showForwardView);
     }
 }

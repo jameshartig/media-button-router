@@ -17,7 +17,26 @@
 		<ListView android:id="@android:id/list"
 			android:layout_height="0px" android:layout_weight="1" android:layout_width="300dp"
 			android:paddingTop="10dp" android:paddingBottom="10dp"></ListView>
-		<Button android:id="@+id/cancelButton" android:layout_width="match_parent"
-			android:layout_height="wrap_content" android:text="@string/cancel_button"></Button>
-	</LinearLayout>
+
+        <LinearLayout
+            android:orientation="horizontal"
+            android:layout_width="fill_parent"
+            android:layout_height="fill_parent">
+
+            <Button
+                android:id="@+id/ignoreButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/ignore_button"
+                android:layout_weight="1" />
+
+            <Button android:id="@+id/cancelButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/cancel_button"
+                android:layout_weight="1" />
+
+        </LinearLayout>
+
+    </LinearLayout>
 </FrameLayout>

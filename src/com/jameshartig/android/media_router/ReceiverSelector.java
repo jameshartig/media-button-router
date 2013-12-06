@@ -35,9 +35,8 @@ import android.content.pm.ResolveInfo;
 import android.media.AudioManager;
 import android.media.MediaPlayer;
 import android.media.MediaPlayer.OnCompletionListener;
+import android.os.Build;
 import android.os.Bundle;
-import android.os.PowerManager;
-import android.os.PowerManager.WakeLock;
 import android.preference.PreferenceManager;
 import android.util.Log;
 import android.view.KeyEvent;
@@ -108,19 +107,6 @@ public class ReceiverSelector extends ListActivity implements AudioManager.OnAud
     private boolean announced;
 
     /**
-     * The power manager used to wake the device with a wake lock so that we can
-     * handle input. Allows us to have a regular activity life cycle when media
-     * buttons are pressed when and the screen is off.
-     */
-    private PowerManager powerManager;
-
-    /**
-     * Used to wake up screen so that we can navigate our UI and select an app
-     * to handle media button presses when display is off.
-     */
-    private WakeLock wakeLock;
-
-    /**
      * Whether we've requested audio focus.
      */
     private boolean audioFocus;
@@ -140,16 +126,14 @@ public class ReceiverSelector extends ListActivity implements AudioManager.OnAud
     /** The cancel button. */
     private View cancelButton;
 
-    private ImageView mediaImage;
+    /** Ignore button */
+    private View ignoreButton;
 
     /** The header */
     private TextView header;
 
     /** Used to figure out if music is playing and handle audio focus. */
     private AudioManager audioManager;
-
-    /** Preferences. */
-    private SharedPreferences preferences;
 
     /**
      * {@inheritDoc}
@@ -158,17 +142,18 @@ public class ReceiverSelector extends ListActivity implements AudioManager.OnAud
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         Log.d(TAG, "Media Button Selector: On Create Called");
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED);
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED
+                             | WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+                             | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
         setContentView(R.layout.media_button_list);
 
         uiIntentFilter = new IntentFilter(Intent.ACTION_MEDIA_BUTTON);
         uiIntentFilter.addAction(Constants.INTENT_ACTION_VIEW_MEDIA_LIST_KEYPRESS);
         uiIntentFilter.setPriority(Integer.MAX_VALUE);
 
-        preferences = PreferenceManager.getDefaultSharedPreferences(this);
+        SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(this);
 
         audioManager = (AudioManager) this.getSystemService(AUDIO_SERVICE);
-        powerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
 
         // XXX can't use integer array, argh:
         // http://code.google.com/p/android/issues/detail?id=2096
@@ -242,7 +227,15 @@ public class ReceiverSelector extends ListActivity implements AudioManager.OnAud
                 finish();
             }
         });
-        mediaImage = (ImageView) findViewById(R.id.mediaImage);
+
+        ignoreButton = findViewById(R.id.ignoreButton);
+        ignoreButton.setOnClickListener(new OnClickListener() {
+
+            @Override
+            public void onClick(View v) {
+                ignore();
+            }
+        });
 
         /* COMMENTED OUT FOR MARKET RELEASE Log.i(TAG, "Media Button Selector: created."); */
     }
@@ -273,9 +266,6 @@ public class ReceiverSelector extends ListActivity implements AudioManager.OnAud
     protected void onPause() {
         super.onPause();
         Log.d(TAG, "Media Button Selector: onPause");
-        if (wakeLock.isHeld()) {
-            wakeLock.release();
-        }
         timeoutExecutor.shutdownNow();
         audioManager.abandonAudioFocus(this);
     }
@@ -314,20 +304,30 @@ public class ReceiverSelector extends ListActivity implements AudioManager.OnAud
             getListView().setFocusableInTouchMode(true);
 
             String action = "";
-            switch (Utils.getAdjustedKeyCode(trappedKeyEvent)) {
-            case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
-                action = getString(audioManager.isMusicActive() ? R.string.pausePlay : R.string.play);
+            int adjustedKeyCode = Utils.getAdjustedKeyCode(trappedKeyEvent);
+            switch (adjustedKeyCode) {
+                case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
+                    action = getString(audioManager.isMusicActive() ? R.string.pausePlay : R.string.play);
                 break;
-            case KeyEvent.KEYCODE_MEDIA_NEXT:
-                action = getString(R.string.next);
+                case KeyEvent.KEYCODE_MEDIA_NEXT:
+                    action = getString(R.string.next);
                 break;
-            case KeyEvent.KEYCODE_MEDIA_PREVIOUS:
-                action = getString(R.string.prev);
+                case KeyEvent.KEYCODE_MEDIA_PREVIOUS:
+                    action = getString(R.string.prev);
                 break;
-            case KeyEvent.KEYCODE_MEDIA_STOP:
-                action = getString(R.string.stop);
+                case KeyEvent.KEYCODE_MEDIA_STOP:
+                    action = getString(R.string.stop);
+                break;
+                default:
+                    //support for newer codes
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT && adjustedKeyCode == KeyEvent.KEYCODE_MEDIA_AUDIO_TRACK) {
+                        action = getString(R.string.audio_track);
+                    } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.ICE_CREAM_SANDWICH_MR1 && adjustedKeyCode == KeyEvent.KEYCODE_MUSIC) {
+                        action = getString(R.string.music);
+                    }
                 break;
             }
+
             header.setText(String.format(getString(R.string.dialog_header_with_action), action));
         } else {
             /* COMMENTED OUT FOR MARKET RELEASE Log.i(TAG, "Media Button Selector: launched without key event, started with intent: " + getIntent()); */
@@ -340,18 +340,6 @@ public class ReceiverSelector extends ListActivity implements AudioManager.OnAud
 
         }
 
-        // power on device's screen so we can interact with it, otherwise on
-        // pause gets called immediately.
-        // alternative would be to change all of the selection logic to happen
-        // in a service?? don't know if that process life cycle would fit well
-        // -- look into
-        // added On after release so screen stays on a little longer instead of
-        // immediately to try and stop resume pause cycle that sometimes
-        // happens.
-        wakeLock = powerManager.newWakeLock(PowerManager.ACQUIRE_CAUSES_WAKEUP | PowerManager.SCREEN_DIM_WAKE_LOCK
-                | PowerManager.ON_AFTER_RELEASE, TAG);
-        wakeLock.setReferenceCounted(false);
-        wakeLock.acquire();
         timeoutExecutor = Executors.newSingleThreadScheduledExecutor();
         resetTimeout();
     }
@@ -447,6 +435,18 @@ public class ReceiverSelector extends ListActivity implements AudioManager.OnAud
                 finish();
             }
         }
+    }
+
+
+
+    /**
+     * Onclick for ignore button
+     */
+    private void ignore() {
+        Log.d(TAG, "Ignoring future selectors");
+        SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(this.getApplicationContext());
+        preferences.edit().putString(Constants.LAST_MEDIA_BUTTON_RECEIVER, Constants.IGNORE_NEW_RECEIVER).commit();
+        finish();
     }
 
     /**
